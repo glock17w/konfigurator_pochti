@@ -47,6 +47,20 @@ const LABELS = {
   suspicious: ['Подозрительное', 'ms-phish'],
 };
 
+
+function getRow(el, email) {
+  let row = el;
+  for (let i = 0; i < 8 && row.parentElement; i++) {
+    const up = row.parentElement;
+    const others = [...up.querySelectorAll(SENDER_SELECTOR)]
+      .some(x => x.getAttribute('aria-label') !== email);
+    if (others) break;
+    row = up;
+    if ((row.textContent || '').length >= 60) break;
+  }
+  return row;
+}
+
 function labelMail(senderEl, name, email, subject) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
