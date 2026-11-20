@@ -96,10 +96,11 @@ function processSender(senderEl) {
 function processGmailRow(row) {
   if (row.querySelector('.ms-badge')) return null;
 
-  const senderEl = row.querySelector('span[email]');
+  const senderEl = row.querySelector('span[email], [data-hovercard-id*="@"]');
   if (!senderEl) return null;
 
-  const email = senderEl.getAttribute('email') || '';
+  const email = senderEl.getAttribute('email')
+    || senderEl.getAttribute('data-hovercard-id') || '';
   const name = senderEl.getAttribute('name') || senderEl.textContent.trim();
   if (!/^[^\s@]+@[^\s@]+$/.test(email)) return null;
 
@@ -133,7 +134,9 @@ function run() {
   const foundMails = [];
 
   if (IS_GMAIL) {
-    document.querySelectorAll('tr.zA').forEach(row => {
+    const rows = document.querySelectorAll('tr.zA, tr[role="row"]');
+    console.log('Gmail: строк найдено', rows.length);
+    rows.forEach(row => {
       const mailData = processGmailRow(row);
       if (mailData) foundMails.push(mailData);
     });
@@ -146,11 +149,3 @@ function run() {
 
   saveMailsBatch(foundMails);
 }
-
-let timer = null;
-new MutationObserver(() => {
-  clearTimeout(timer);
-  timer = setTimeout(run, 300);
-}).observe(document.body, { childList: true, subtree: true });
-
-run();
