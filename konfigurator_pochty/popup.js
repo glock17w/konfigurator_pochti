@@ -1,19 +1,10 @@
 let mails = [];
 let currentFilter = "all";
 
-function show(label) {
-  currentFilter = label;
-  const listEl = document.getElementById("list");
-  if (!listEl) return;
-
-  let html = "";
-  for (let i = 0; i < mails.length; i++) {
-    if (label === "all" || mails[i].label === label) {
-      html += `<p><b>${mails[i].subject}</b><br>${mails[i].from} (${mails[i].account})</p>`;
-    }
-  }
-
-  listEl.innerHTML = html || "<p>Писем в этой категории пока нет</p>";
+function esc(text) {
+  return String(text || "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
 }
 
 function truncate(text, maxLength = 40) {
@@ -29,20 +20,17 @@ function show(label) {
   let html = "";
   for (let i = 0; i < mails.length; i++) {
     if (label === "all" || mails[i].label === label) {
-      const preview = truncate(mails[i].subject, 45);
       html += `
         <details style="padding: 5px 0; border-bottom: 1px solid #eee; cursor: pointer;">
           <summary style="font-size: 12px; list-style: none;">
-            <b>${mails[i].from}</b> — <span style="color: #555;">${preview}</span>
+            <b>${esc(mails[i].from)}</b> — <span style="color: #555;">${esc(truncate(mails[i].subject, 45))}</span>
           </summary>
           <div style="margin-top: 5px; font-size: 12px; color: #222; background: #f9f9f9; padding: 6px; border-radius: 4px;">
-            ${mails[i].subject}
+            ${esc(mails[i].subject)}<br><small>${esc(mails[i].account)}</small>
           </div>
-        </details>
-      `;
+        </details>`;
     }
   }
-
   listEl.innerHTML = html || "<p>Писем в этой категории пока нет</p>";
 }
 
@@ -65,21 +53,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
 
 document.addEventListener("DOMContentLoaded", () => {
   const buttons = {
-    btnAll: "all",
-    btnSuspicious: "suspicious",
-    btnWork: "work",
-    btnPersonal: "personal",
-    btnNewsletter: "newsletter"
+    btnAll: "all", btnSuspicious: "suspicious", btnWork: "work",
+    btnPersonal: "personal", btnNewsletter: "newsletter"
   };
-
   for (const [id, filter] of Object.entries(buttons)) {
     const btn = document.getElementById(id);
-    if (btn) {
-      btn.addEventListener("click", () => show(filter));
-    } else {
-      console.warn(`Кнопка с id="${id}" не найдена в popup.html`);
-    }
+    if (btn) btn.addEventListener("click", () => show(filter));
   }
-
   initPopup();
 });

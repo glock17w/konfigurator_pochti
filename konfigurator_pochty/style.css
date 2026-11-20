@@ -13,9 +13,3 @@
 .ms-personal { background: #16a34a; }
 .ms-news { background: #9ca3af; }
 .ms-phish { background: #dc2626; }
-.container {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 8px;
-}
