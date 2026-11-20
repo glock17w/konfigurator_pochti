@@ -1,0 +1,21 @@
+.ms-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  margin-right: 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+.ms-work { background: #2563eb; }
+.ms-personal { background: #16a34a; }
+.ms-news { background: #9ca3af; }
+.ms-phish { background: #dc2626; }
+.container {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}

@@ -1,0 +1,18 @@
+{
+ "manifest_version": 3,
+ "name": "Конфигуратор почты",
+ "version": "1.0",
+ "description": "Цветные метки Работа / Личное / Рассылки и предупреждение о подозрительных письмах в Яндекс Почте",
+ "action": {
+ "default_popup": "popup.html"
+ },
+ "permissions": ["storage"],
+ "content_scripts": [
+ {
+ "matches": ["https://mail.yandex.ru/*"],
+ "js": ["content.js"],
+ "css": ["style.css"],
+ "run_at": "document_idle"
+ }
+ ]
+}

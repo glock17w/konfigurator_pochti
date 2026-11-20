@@ -1,0 +1,123 @@
+const SENDER_SELECTOR = '[aria-label*="@"]';
+
+const WORK_DOMAINS = ['company.ru', 'gosuslugi.ru'];
+
+const NEWS_ADDRESS = /(noreply|no-reply|newsletter|news@|info@|mailer|digest|promo|marketing)/i;
+const NEWS_SUBJECT = /(скидк|акци|распродаж|промокод|подборк|новинк|выгодн|дайджест)/i;
+
+const URGENT = /(срочно|ваш аккаунт.*(заблокирован|взломан)|подтвердите|уточните|немедленно|последнее предупреждение|доступ ограничен|выигрыш|блокировка|заблокирован|истекает срок|истечение срока|задолженност|досудебн|взыскани|подозрительн.{0,10}транзакц)/i;
+const BRANDS = {
+  'яндекс': ['yandex.ru', 'yandex.com', 'ya.ru'],
+  'сбер': ['sberbank.ru', 'sber.ru'],
+  'тинькофф': ['tinkoff.ru', 'tbank.ru'],
+  'т-банк': ['tinkoff.ru', 'tbank.ru'],
+  'госуслуги': ['gosuslugi.ru'],
+  'почта россии': ['pochta.ru'],
+};
+
+function getDomain(email) {
+  const m = (email || '').match(/@([\w.-]+)/);
+  return m ? m[1].toLowerCase() : '';
+}
+
+function classify(name, email, subject) {
+  const domain = getDomain(email);
+  const lowName = (name || '').toLowerCase();
+
+  if (URGENT.test(subject)) return 'suspicious';
+  if (domain) {
+    for (const [brand, domains] of Object.entries(BRANDS)) {
+      if (lowName.includes(brand) && !domains.some(d => domain === d || domain.endsWith('.' + d))) {
+        return 'suspicious';
+      }
+    }
+  }
+  if (domain && WORK_DOMAINS.some(d => domain === d || domain.endsWith('.' + d))) return 'work';
+  if (NEWS_ADDRESS.test(email || '') || NEWS_SUBJECT.test(subject)) return 'newsletter';
+  return 'personal';
+}
+
+const LABELS = {
+  work: ['Работа', 'ms-work'],
+  personal: ['Личное', 'ms-personal'],
+  newsletter: ['Рассылка', 'ms-news'],
+  suspicious: ['Подозрительное', 'ms-phish'],
+};
+
+function getRow(el, email) {
+  let row = el;
+  for (let i = 0; i < 8 && row.parentElement; i++) {
+    const up = row.parentElement;
+    const others = [...up.querySelectorAll(SENDER_SELECTOR)]
+      .some(x => x.getAttribute('aria-label') !== email);
+    if (others) break;
+    row = up;
+    if ((row.textContent || '').length >= 60) break;
+  }
+  return row;
+}
+
+function processSender(senderEl) {
+  const email = senderEl.getAttribute('aria-label') || '';
+  const name = senderEl.textContent.trim();
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) return null;
+  if (!name || name.length <= 2) return null;
+  if (senderEl.closest('[class*="vatar"]')) return null;
+
+  const prev = senderEl.previousElementSibling;
+  if (prev && prev.classList.contains('ms-badge')) return null;
+
+  const row = getRow(senderEl, email);
+  if (row.querySelector('.ms-badge')) return null;
+  const subject = row.textContent || '';
+
+  const type = classify(name, email, subject);
+  const [text, cls] = LABELS[type];
+  const badge = document.createElement('span');
+  badge.className = 'ms-badge ' + cls;
+  badge.textContent = text;
+  senderEl.parentElement.insertBefore(badge, senderEl);
+
+  return {
+    from: email,
+    subject: subject.trim(),
+    label: type,
+    account: "Яндекс"
+  };
+}
+
+async function saveMailsBatch(newMails) {
+  if (newMails.length === 0) return;
+
+  const { mails = [] } = await chrome.storage.local.get({ mails: [] });
+  let isUpdated = false;
+
+  for (const item of newMails) {
+    const exists = mails.some(m => m.from === item.from && m.subject === item.subject);
+    if (!exists) {
+      mails.unshift(item);
+      isUpdated = true;
+    }
+  }
+
+  if (isUpdated) {
+    await chrome.storage.local.set({ mails: mails.slice(0, 100) });
+  }
+}
+
+function run() {
+  const foundMails = [];
+  document.querySelectorAll(SENDER_SELECTOR).forEach(el => {
+    const mailData = processSender(el);
+    if (mailData) foundMails.push(mailData);
+  });
+  saveMailsBatch(foundMails);
+}
+
+let timer = null;
+new MutationObserver(() => {
+  clearTimeout(timer);
+  timer = setTimeout(run, 300);
+}).observe(document.body, { childList: true, subtree: true });
+
+run();
