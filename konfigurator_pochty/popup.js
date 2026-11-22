@@ -20,6 +20,7 @@ function show(label) {
   let html = "";
   for (let i = 0; i < mails.length; i++) {
     if (label === "all" || mails[i].label === label) {
+      const url = safeUrl(mails[i].url);
       html += `
         <details style="padding: 5px 0; border-bottom: 1px solid #eee; cursor: pointer;">
           <summary style="font-size: 12px; list-style: none;">
@@ -27,6 +28,9 @@ function show(label) {
           </summary>
           <div style="margin-top: 5px; font-size: 12px; color: #222; background: #f9f9f9; padding: 6px; border-radius: 4px;">
             ${esc(mails[i].subject)}<br><small>${esc(mails[i].account)}</small>
+            ${url
+              ? `<br><a href="${esc(url)}" target="_blank" rel="noopener" style="color:#2563eb;">Открыть письмо ↗</a>`
+              : ""}
           </div>
         </details>`;
     }
@@ -62,3 +66,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
   initPopup();
 });
+
+function safeUrl(url) {
+  return /^https:\/\/(mail\.yandex\.ru|mail\.google\.com)\//.test(url || "") ? url : "";
+}

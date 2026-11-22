@@ -61,24 +61,22 @@ function getRow(el, email) {
   return row;
 }
 
-function labelMail(senderEl, name, email, subject, anchor) {
+function labelMail(senderEl, name, email, subject, url) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
   const badge = document.createElement('span');
   badge.className = 'ms-badge ' + cls;
   badge.textContent = text;
-
-  if (anchor) anchor.insertBefore(badge, anchor.firstChild);
-  else senderEl.parentElement.insertBefore(badge, senderEl);
+  senderEl.parentElement.insertBefore(badge, senderEl);
 
   return {
     from: email,
     subject: subject.trim(),
     label: type,
-    account: ACCOUNT
+    account: ACCOUNT,
+    url: url || ''
   };
 }
-
 function processSender(senderEl) {
   const email = senderEl.getAttribute('aria-label') || '';
   const name = senderEl.textContent.trim();
@@ -92,7 +90,23 @@ function processSender(senderEl) {
   const row = getRow(senderEl, email);
   if (row.querySelector('.ms-badge')) return null;
 
-  return labelMail(senderEl, name, email, row.textContent || '');
+  return labelMail(senderEl, name, email, row.textContent || '', getMailUrl(row));
+}
+
+function getMailUrl(row) {
+  if (IS_GMAIL) {
+    const a = row.querySelector('a[href*="mail.google.com/mail"][href*="#"]');
+    if (a) return a.href;
+    const idEl = row.querySelector('[data-legacy-thread-id]');
+    if (idEl) {
+      return location.origin + location.pathname + '#all/' +
+        idEl.getAttribute('data-legacy-thread-id');
+    }
+    return '';
+  }
+  const a = row.querySelector(
+    'a[href*="#message/"], a[href*="/message/"], a[href*="#thread/"]');
+  return a ? a.href : '';
 }
 
 function processGmailRow(row) {
@@ -111,7 +125,7 @@ function processGmailRow(row) {
 
   console.log('метка для', email);
   const anchor = row.querySelector('.y6');
-  return labelMail(senderEl, name, email, subject, anchor);
+  return labelMail(senderEl, name, email, subject, getMailUrl(row));
 }
 
 async function saveMailsBatch(newMails) {
@@ -128,6 +142,18 @@ async function saveMailsBatch(newMails) {
       isUpdated = true;
     }
   }
+  
+  for (const item of newMails) {
+  const found = mails.find(m =>
+    m.from === item.from && m.subject === item.subject && m.account === item.account);
+  if (!found) {
+    mails.unshift(item);
+    isUpdated = true;
+  } else if (!found.url && item.url) {
+    found.url = item.url;
+    isUpdated = true;
+  }
+}
 
   if (isUpdated) {
     await chrome.storage.local.set({ mails: mails.slice(0, 200) });
