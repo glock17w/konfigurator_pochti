@@ -151,9 +151,4 @@ function run() {
 }
 
 run();
-
-let timer;
-new MutationObserver(() => {
-  clearTimeout(timer);
-  timer = setTimeout(run, 500);
-}).observe(document.body, { childList: true, subtree: true });
+setInterval(run, 1000);
