@@ -61,13 +61,15 @@ function getRow(el, email) {
   return row;
 }
 
-function labelMail(senderEl, name, email, subject) {
+function labelMail(senderEl, name, email, subject, anchor) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
   const badge = document.createElement('span');
   badge.className = 'ms-badge ' + cls;
   badge.textContent = text;
-  senderEl.parentElement.insertBefore(badge, senderEl);
+
+  if (anchor) anchor.insertBefore(badge, anchor.firstChild);
+  else senderEl.parentElement.insertBefore(badge, senderEl);
 
   return {
     from: email,
@@ -97,17 +99,19 @@ function processGmailRow(row) {
   if (row.querySelector('.ms-badge')) return null;
 
   const senderEl = row.querySelector('span[email], [data-hovercard-id*="@"]');
-  if (!senderEl) return null;
+  if (!senderEl) { console.log('нет отправителя в строке', row); return null; }
 
   const email = senderEl.getAttribute('email')
     || senderEl.getAttribute('data-hovercard-id') || '';
   const name = senderEl.getAttribute('name') || senderEl.textContent.trim();
-  if (!/^[^\s@]+@[^\s@]+$/.test(email)) return null;
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) { console.log('плохой email:', email); return null; }
 
   const subjectEl = row.querySelector('.bog');
   const subject = subjectEl ? subjectEl.textContent : (row.textContent || '');
 
-  return labelMail(senderEl, name, email, subject);
+  console.log('метка для', email);
+  const anchor = row.querySelector('.y6');
+  return labelMail(senderEl, name, email, subject, anchor);
 }
 
 async function saveMailsBatch(newMails) {
