@@ -61,22 +61,19 @@ function getRow(el, email) {
   return row;
 }
 
-function labelMail(senderEl, name, email, subject, url) {
+function labelMail(senderEl, name, email, subject, url, anchor) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
   const badge = document.createElement('span');
   badge.className = 'ms-badge ' + cls;
   badge.textContent = text;
-  senderEl.parentElement.insertBefore(badge, senderEl);
+  const target = anchor || senderEl;
+  target.parentElement.insertBefore(badge, target);
 
-  return {
-    from: email,
-    subject: subject.trim(),
-    label: type,
-    account: ACCOUNT,
-    url: url || ''
-  };
+  return { from: email, subject: subject.trim(), label: type,
+           account: ACCOUNT, url: url || '' };
 }
+
 function processSender(senderEl) {
   const email = senderEl.getAttribute('aria-label') || '';
   const name = senderEl.textContent.trim();
@@ -113,19 +110,18 @@ function processGmailRow(row) {
   if (row.querySelector('.ms-badge')) return null;
 
   const senderEl = row.querySelector('span[email], [data-hovercard-id*="@"]');
-  if (!senderEl) { console.log('нет отправителя в строке', row); return null; }
+  if (!senderEl) return null;
 
   const email = senderEl.getAttribute('email')
     || senderEl.getAttribute('data-hovercard-id') || '';
   const name = senderEl.getAttribute('name') || senderEl.textContent.trim();
-  if (!/^[^\s@]+@[^\s@]+$/.test(email)) { console.log('плохой email:', email); return null; }
+  if (!/^[^\s@]+@[^\s@]+$/.test(email)) return null;
 
   const subjectEl = row.querySelector('.bog');
   const subject = subjectEl ? subjectEl.textContent : (row.textContent || '');
 
-  console.log('метка для', email);
-  const anchor = row.querySelector('.y6');
-  return labelMail(senderEl, name, email, subject, getMailUrl(row));
+  const anchor = row.querySelector('.y6') || senderEl;
+  return labelMail(senderEl, name, email, subject, getMailUrl(row), anchor);
 }
 
 async function saveMailsBatch(newMails) {
@@ -135,37 +131,26 @@ async function saveMailsBatch(newMails) {
   let isUpdated = false;
 
   for (const item of newMails) {
-    const exists = mails.some(m =>
+    const found = mails.find(m =>
       m.from === item.from && m.subject === item.subject && m.account === item.account);
-    if (!exists) {
+    if (!found) {
       mails.unshift(item);
+      isUpdated = true;
+    } else if (!found.url && item.url) {
+      found.url = item.url;
       isUpdated = true;
     }
   }
-  
-  for (const item of newMails) {
-  const found = mails.find(m =>
-    m.from === item.from && m.subject === item.subject && m.account === item.account);
-  if (!found) {
-    mails.unshift(item);
-    isUpdated = true;
-  } else if (!found.url && item.url) {
-    found.url = item.url;
-    isUpdated = true;
-  }
-}
 
   if (isUpdated) {
     await chrome.storage.local.set({ mails: mails.slice(0, 200) });
   }
 }
-
 function run() {
   const foundMails = [];
 
   if (IS_GMAIL) {
     const rows = document.querySelectorAll('tr.zA, tr[role="row"]');
-    console.log('Gmail: строк найдено', rows.length);
     rows.forEach(row => {
       const mailData = processGmailRow(row);
       if (mailData) foundMails.push(mailData);
@@ -180,5 +165,16 @@ function run() {
   saveMailsBatch(foundMails);
 }
 
-run();
-setInterval(run, 1000);
+
+let timer = null;
+function scheduleRun() {
+  clearTimeout(timer);
+  timer = setTimeout(run, 300);
+}
+
+new MutationObserver(scheduleRun).observe(document.body, {
+  childList: true,
+  subtree: true
+});
+window.addEventListener('hashchange', scheduleRun);
+scheduleRun();
