@@ -1,14 +1,7 @@
 const SENDER_SELECTOR = '[aria-label*="@"]';
-
 const WORK_DOMAINS = ['company.ru', 'gosuslugi.ru'];
-let customDomains = [];
-
 const NEWS_ADDRESS = /(noreply|no-reply|newsletter|news@|info@|mailer|digest|promo|marketing)/i;
 const NEWS_SUBJECT = /(скидк|акци|распродаж|промокод|подборк|новинк|выгодн|дайджест)/i;
-
-const IS_GMAIL = location.hostname === 'mail.google.com';
-const ACCOUNT = IS_GMAIL ? 'Gmail' : 'Яндекс';
-console.log('content.js v1.1 загружен, ящик:', ACCOUNT);
 const URGENT = /(срочно|ваш аккаунт.*(заблокирован|взломан)|подтвердите|уточните|немедленно|последнее предупреждение|доступ ограничен|выигрыш|блокировка|заблокирован|истекает срок|истечение срока|задолженност|досудебн|взыскани|подозрительн.{0,10}транзакц)/i;
 const BRANDS = {
   'яндекс': ['yandex.ru', 'yandex.com', 'ya.ru'],
@@ -18,10 +11,32 @@ const BRANDS = {
   'госуслуги': ['gosuslugi.ru'],
   'почта россии': ['pochta.ru'],
 };
+const LABELS = {
+  work: ['Работа', 'ms-work'],
+  personal: ['Личное', 'ms-personal'],
+  newsletter: ['Рассылка', 'ms-news'],
+  suspicious: ['Подозрительное', 'ms-phish'],
+};
+const MAX_MAILS = 200;
+
+const IS_GMAIL = location.hostname === 'mail.google.com';
+const ACCOUNT = IS_GMAIL ? 'Gmail' : 'Яндекс';
+
+let observer = null;
+let timer = null;
+let saveChain = Promise.resolve();
+
+function alive() {
+  try { return !!(chrome.runtime && chrome.runtime.id); } catch (e) { return false; }
+}
 
 function getDomain(email) {
   const m = (email || '').match(/@([\w.-]+)/);
   return m ? m[1].toLowerCase() : '';
+}
+
+function inDomains(domain, list) {
+  return list.some(d => domain === d || domain.endsWith('.' + d));
 }
 
 function classify(name, email, subject) {
@@ -31,24 +46,20 @@ function classify(name, email, subject) {
   if (URGENT.test(subject)) return 'suspicious';
   if (domain) {
     for (const [brand, domains] of Object.entries(BRANDS)) {
-      if (lowName.includes(brand) && !domains.some(d => domain === d || domain.endsWith('.' + d))) {
-        return 'suspicious';
-      }
+      if (lowName.includes(brand) && !inDomains(domain, domains)) return 'suspicious';
     }
+    if (inDomains(domain, WORK_DOMAINS)) return 'work';
   }
-  const workList = [...WORK_DOMAINS, ...customDomains];
-  if (domain && workList.some(d => domain === d || domain.endsWith('.' + d))) return 'work';
   if (NEWS_ADDRESS.test(email || '') || NEWS_SUBJECT.test(subject)) return 'newsletter';
   return 'personal';
 }
 
-const LABELS = {
-  work: ['Работа', 'ms-work'],
-  personal: ['Личное', 'ms-personal'],
-  newsletter: ['Рассылка', 'ms-news'],
-  suspicious: ['Подозрительное', 'ms-phish'],
-};
-
+// Текст строки без наших меток — чтобы тема не менялась после вставки метки
+function cleanText(el) {
+  const clone = el.cloneNode(true);
+  clone.querySelectorAll('.ms-badge').forEach(b => b.remove());
+  return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+}
 
 function getRow(el, email) {
   let row = el;
@@ -63,21 +74,18 @@ function getRow(el, email) {
   return row;
 }
 
-function labelMail(senderEl, name, email, subject, anchorEl) {
+// Метку ставим один раз, но данные возвращаем ВСЕГДА
+function labelMail(senderEl, row, name, email, subject) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
-  const badge = document.createElement('span');
-  badge.className = 'ms-badge ' + cls;
-  badge.textContent = text;
-  const target = anchorEl && anchorEl.parentElement ? anchorEl : senderEl;
-  target.parentElement.insertBefore(badge, target);
 
-  return {
-    from: email,
-    subject: subject.trim(),
-    label: type,
-    account: ACCOUNT
-  };
+  if (!row.querySelector('.ms-badge') && senderEl.parentElement) {
+    const badge = document.createElement('span');
+    badge.className = 'ms-badge ' + cls;
+    badge.textContent = text;
+    senderEl.parentElement.insertBefore(badge, senderEl);
+  }
+  return { from: email, subject, label: type, account: ACCOUNT };
 }
 
 function processSender(senderEl) {
@@ -87,101 +95,73 @@ function processSender(senderEl) {
   if (!name || name.length <= 2) return null;
   if (senderEl.closest('[class*="vatar"]')) return null;
 
-  const prev = senderEl.previousElementSibling;
-  if (prev && prev.classList.contains('ms-badge')) return null;
-
   const row = getRow(senderEl, email);
-  if (row.querySelector('.ms-badge')) return null;
-
-  return labelMail(senderEl, name, email, row.textContent || '');
+  return labelMail(senderEl, row, name, email, cleanText(row));
 }
 
 function processGmailRow(row) {
-  if (row.querySelector('.ms-badge')) return null;
-
   const senderEl = row.querySelector('span[email], [data-hovercard-id*="@"]');
   if (!senderEl) return null;
 
-  const email = senderEl.getAttribute('email')
-    || senderEl.getAttribute('data-hovercard-id') || '';
+  const email = senderEl.getAttribute('email') || senderEl.getAttribute('data-hovercard-id') || '';
   const name = senderEl.getAttribute('name') || senderEl.textContent.trim();
   if (!/^[^\s@]+@[^\s@]+$/.test(email)) return null;
 
   const subjectEl = row.querySelector('.bog');
-  const subject = subjectEl ? subjectEl.textContent : (row.textContent || '');
-
-  return labelMail(senderEl, name, email, subject, subjectEl);
+  const subject = subjectEl ? subjectEl.textContent.replace(/\s+/g, ' ').trim() : cleanText(row);
+  return labelMail(senderEl, row, name, email, subject);
 }
 
-async function saveMailsBatch(newMails) {
-  if (newMails.length === 0) return;
-
+async function saveMails(newMails) {
+  if (!newMails.length || !alive()) return;
   const { mails = [] } = await chrome.storage.local.get({ mails: [] });
-  let isUpdated = false;
-
+  const keys = new Set(mails.map(m => `${m.account}|${m.from}|${m.subject}`));
+  const fresh = [];
   for (const item of newMails) {
-    const found = mails.find(m =>
-      m.from === item.from && m.subject === item.subject && m.account === item.account);
-    if (!found) {
-      mails.unshift(item);
-      isUpdated = true;
-    } else if (found.label !== item.label) {
-      found.label = item.label;
-      isUpdated = true;
-    }
+    const key = `${item.account}|${item.from}|${item.subject}`;
+    if (!keys.has(key)) { keys.add(key); fresh.push(item); }
   }
+  if (fresh.length) {
+    await chrome.storage.local.set({ mails: [...fresh, ...mails].slice(0, MAX_MAILS) });
+  }
+}
 
-  if (isUpdated) {
-    await chrome.storage.local.set({ mails: mails.slice(0, 200) });
-  }
+// Записи идут строго по очереди — без гонок get/set
+function queueSave(newMails) {
+  saveChain = saveChain
+    .then(() => saveMails(newMails))
+    .catch(e => console.warn('Конфигуратор почты: не удалось сохранить', e));
 }
 
 function run() {
-  const foundMails = [];
-
-  if (IS_GMAIL) {
-    const rows = document.querySelectorAll('tr.zA, tr[role="row"]');
-    console.log('Gmail: строк найдено', rows.length);
-    rows.forEach(row => {
-      const mailData = processGmailRow(row);
-      if (mailData) foundMails.push(mailData);
-    });
-  } else {
-    document.querySelectorAll(SENDER_SELECTOR).forEach(el => {
-      const mailData = processSender(el);
-      if (mailData) foundMails.push(mailData);
-    });
+  if (!alive()) {            // расширение обновили/перезагрузили — тихо выходим
+    if (observer) observer.disconnect();
+    return;
   }
-
-  saveMailsBatch(foundMails);
+  const found = [];
+  try {
+    if (IS_GMAIL) {
+      document.querySelectorAll('tr.zA, tr[role="row"]').forEach(row => {
+        const d = processGmailRow(row);
+        if (d) found.push(d);
+      });
+    } else {
+      document.querySelectorAll(SENDER_SELECTOR).forEach(el => {
+        const d = processSender(el);
+        if (d) found.push(d);
+      });
+    }
+  } catch (e) {
+    console.warn('Конфигуратор почты: ошибка обработки', e);
+  }
+  queueSave(found);
 }
 
-let timer = null;
-function scheduleRun() {
+function schedule() {
   clearTimeout(timer);
-  timer = setTimeout(run, 300);
+  timer = setTimeout(run, 500);
 }
 
-function relabel() {
-  document.querySelectorAll('.ms-badge').forEach(b => b.remove());
-  scheduleRun();
-}
-
-chrome.storage.local.get({ workDomains: [] }).then(d => {
-  customDomains = d.workDomains || [];
-  relabel();
-});
-
-chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.workDomains) {
-    customDomains = changes.workDomains.newValue || [];
-    relabel();
-  }
-});
-
-new MutationObserver(scheduleRun).observe(document.body, {
-  childList: true,
-  subtree: true
-});
-window.addEventListener('hashchange', scheduleRun);
-scheduleRun();
+observer = new MutationObserver(schedule);
+observer.observe(document.body, { childList: true, subtree: true });
+run();

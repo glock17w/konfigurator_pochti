@@ -7,22 +7,14 @@
 <body>
   <h2>Конфигуратор почты</h2>
   <div class="tabs">
-    <button id="btnAll">Все</button>
-    <button id="btnSuspicious">Подозрительные</button>
-    <button id="btnWork">Работа</button>
-    <button id="btnPersonal">Личное</button>
-    <button id="btnNewsletter">Рассылка</button>
+    <button data-filter="all" class="active">Все <span class="cnt">0</span></button>
+    <button data-filter="suspicious">Подозрительные <span class="cnt">0</span></button>
+    <button data-filter="work">Работа <span class="cnt">0</span></button>
+    <button data-filter="personal">Личное <span class="cnt">0</span></button>
+    <button data-filter="newsletter">Рассылка <span class="cnt">0</span></button>
   </div>
   <div id="list"></div>
-  <details id="settings">
-    <summary>Рабочие домены</summary>
-    <div class="add-row">
-      <input id="domainInput" placeholder="например, company.ru">
-      <button id="btnAddDomain">Добавить</button>
-    </div>
-    <div id="domainError"></div>
-    <ul id="domainList"></ul>
-  </details>
+  <button id="btnClear" class="clear">Очистить список</button>
   <script src="popup.js"></script>
 </body>
 </html>
