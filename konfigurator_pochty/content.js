@@ -1,7 +1,7 @@
 const SENDER_SELECTOR = '[aria-label*="@"]';
 
 const WORK_DOMAINS = ['company.ru', 'gosuslugi.ru'];
-let customDomains = []; // домены, добавленные пользователем через popup
+let customDomains = []; s
 
 const NEWS_ADDRESS = /(noreply|no-reply|newsletter|news@|info@|mailer|digest|promo|marketing)/i;
 const NEWS_SUBJECT = /(скидк|акци|распродаж|промокод|подборк|новинк|выгодн|дайджест)/i;
@@ -63,13 +63,14 @@ function getRow(el, email) {
   return row;
 }
 
-function labelMail(senderEl, name, email, subject) {
+function labelMail(senderEl, name, email, subject, anchorEl) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
   const badge = document.createElement('span');
   badge.className = 'ms-badge ' + cls;
   badge.textContent = text;
-  senderEl.parentElement.insertBefore(badge, senderEl);
+  const target = anchorEl && anchorEl.parentElement ? anchorEl : senderEl;
+  target.parentElement.insertBefore(badge, target);
 
   return {
     from: email,
@@ -109,7 +110,7 @@ function processGmailRow(row) {
   const subjectEl = row.querySelector('.bog');
   const subject = subjectEl ? subjectEl.textContent : (row.textContent || '');
 
-  return labelMail(senderEl, name, email, subject);
+  return labelMail(senderEl, name, email, subject, subjectEl);
 }
 
 async function saveMailsBatch(newMails) {
@@ -125,7 +126,7 @@ async function saveMailsBatch(newMails) {
       mails.unshift(item);
       isUpdated = true;
     } else if (found.label !== item.label) {
-      found.label = item.label; // домен добавили/убрали — обновляем метку в popup
+      found.label = item.label;
       isUpdated = true;
     }
   }
@@ -161,7 +162,6 @@ function scheduleRun() {
   timer = setTimeout(run, 300);
 }
 
-// Убираем старые метки и размечаем заново (после изменения списка доменов)
 function relabel() {
   document.querySelectorAll('.ms-badge').forEach(b => b.remove());
   scheduleRun();

@@ -1,5 +1,11 @@
 .ms-badge {
-  display: inline-block;
+  display: inline-block !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  flex: none !important;
+  overflow: visible !important;
+  position: static !important;
   padding: 1px 7px;
   margin-right: 8px;
   border-radius: 10px;
