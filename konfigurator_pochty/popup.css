@@ -4,3 +4,12 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .tabs button { padding: 4px 10px; border: 1px solid #ccc; border-radius: 12px;
   background: #fff; cursor: pointer; }
 #list { max-height: 320px; overflow-y: auto; }
+#settings { margin-top: 10px; font-size: 13px; }
+#settings summary { cursor: pointer; font-weight: 600; }
+.add-row { display: flex; gap: 6px; margin: 8px 0 4px; }
+.add-row input { flex: 1; padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; }
+.add-row button { padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px; background: #fff; cursor: pointer; }
+#domainError { color: #dc2626; font-size: 12px; min-height: 14px; }
+#domainList { list-style: none; margin: 4px 0 0; padding: 0; }
+#domainList li { display: flex; justify-content: space-between; align-items: center; padding: 3px 0; border-bottom: 1px solid #eee; }
+#domainList button { border: none; background: none; color: #dc2626; cursor: pointer; font-size: 15px; }

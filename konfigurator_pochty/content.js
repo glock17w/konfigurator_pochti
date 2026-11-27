@@ -1,6 +1,7 @@
 const SENDER_SELECTOR = '[aria-label*="@"]';
 
 const WORK_DOMAINS = ['company.ru', 'gosuslugi.ru'];
+let customDomains = []; // домены, добавленные пользователем через popup
 
 const NEWS_ADDRESS = /(noreply|no-reply|newsletter|news@|info@|mailer|digest|promo|marketing)/i;
 const NEWS_SUBJECT = /(скидк|акци|распродаж|промокод|подборк|новинк|выгодн|дайджест)/i;
@@ -35,7 +36,8 @@ function classify(name, email, subject) {
       }
     }
   }
-  if (domain && WORK_DOMAINS.some(d => domain === d || domain.endsWith('.' + d))) return 'work';
+  const workList = [...WORK_DOMAINS, ...customDomains];
+  if (domain && workList.some(d => domain === d || domain.endsWith('.' + d))) return 'work';
   if (NEWS_ADDRESS.test(email || '') || NEWS_SUBJECT.test(subject)) return 'newsletter';
   return 'personal';
 }
@@ -61,17 +63,20 @@ function getRow(el, email) {
   return row;
 }
 
-function labelMail(senderEl, name, email, subject, url, anchor) {
+function labelMail(senderEl, name, email, subject) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
   const badge = document.createElement('span');
   badge.className = 'ms-badge ' + cls;
   badge.textContent = text;
-  const target = anchor || senderEl;
-  target.parentElement.insertBefore(badge, target);
+  senderEl.parentElement.insertBefore(badge, senderEl);
 
-  return { from: email, subject: subject.trim(), label: type,
-           account: ACCOUNT, url: url || '' };
+  return {
+    from: email,
+    subject: subject.trim(),
+    label: type,
+    account: ACCOUNT
+  };
 }
 
 function processSender(senderEl) {
@@ -87,23 +92,7 @@ function processSender(senderEl) {
   const row = getRow(senderEl, email);
   if (row.querySelector('.ms-badge')) return null;
 
-  return labelMail(senderEl, name, email, row.textContent || '', getMailUrl(row));
-}
-
-function getMailUrl(row) {
-  if (IS_GMAIL) {
-    const a = row.querySelector('a[href*="mail.google.com/mail"][href*="#"]');
-    if (a) return a.href;
-    const idEl = row.querySelector('[data-legacy-thread-id]');
-    if (idEl) {
-      return location.origin + location.pathname + '#all/' +
-        idEl.getAttribute('data-legacy-thread-id');
-    }
-    return '';
-  }
-  const a = row.querySelector(
-    'a[href*="#message/"], a[href*="/message/"], a[href*="#thread/"]');
-  return a ? a.href : '';
+  return labelMail(senderEl, name, email, row.textContent || '');
 }
 
 function processGmailRow(row) {
@@ -120,8 +109,7 @@ function processGmailRow(row) {
   const subjectEl = row.querySelector('.bog');
   const subject = subjectEl ? subjectEl.textContent : (row.textContent || '');
 
-  const anchor = row.querySelector('.y6') || senderEl;
-  return labelMail(senderEl, name, email, subject, getMailUrl(row), anchor);
+  return labelMail(senderEl, name, email, subject);
 }
 
 async function saveMailsBatch(newMails) {
@@ -136,8 +124,8 @@ async function saveMailsBatch(newMails) {
     if (!found) {
       mails.unshift(item);
       isUpdated = true;
-    } else if (!found.url && item.url) {
-      found.url = item.url;
+    } else if (found.label !== item.label) {
+      found.label = item.label; // домен добавили/убрали — обновляем метку в popup
       isUpdated = true;
     }
   }
@@ -146,11 +134,13 @@ async function saveMailsBatch(newMails) {
     await chrome.storage.local.set({ mails: mails.slice(0, 200) });
   }
 }
+
 function run() {
   const foundMails = [];
 
   if (IS_GMAIL) {
     const rows = document.querySelectorAll('tr.zA, tr[role="row"]');
+    console.log('Gmail: строк найдено', rows.length);
     rows.forEach(row => {
       const mailData = processGmailRow(row);
       if (mailData) foundMails.push(mailData);
@@ -165,12 +155,29 @@ function run() {
   saveMailsBatch(foundMails);
 }
 
-
 let timer = null;
 function scheduleRun() {
   clearTimeout(timer);
   timer = setTimeout(run, 300);
 }
+
+// Убираем старые метки и размечаем заново (после изменения списка доменов)
+function relabel() {
+  document.querySelectorAll('.ms-badge').forEach(b => b.remove());
+  scheduleRun();
+}
+
+chrome.storage.local.get({ workDomains: [] }).then(d => {
+  customDomains = d.workDomains || [];
+  relabel();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.workDomains) {
+    customDomains = changes.workDomains.newValue || [];
+    relabel();
+  }
+});
 
 new MutationObserver(scheduleRun).observe(document.body, {
   childList: true,

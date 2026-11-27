@@ -38,6 +38,58 @@ function show(label) {
   listEl.innerHTML = html || "<p>Писем в этой категории пока нет</p>";
 }
 
+let workDomains = [];
+
+function normalizeDomain(raw) {
+  let d = (raw || "").trim().toLowerCase();
+  d = d.replace(/^[a-z]+:\/\//, "");   // https://
+  d = d.includes("@") ? d.split("@").pop() : d; // ivanov@company.ru -> company.ru
+  d = d.split("/")[0].replace(/^www\./, "");
+  return d;
+}
+
+function renderDomains() {
+  const ul = document.getElementById("domainList");
+  if (!ul) return;
+  ul.innerHTML = workDomains.map((d, i) =>
+    <li><span>${esc(d)}</span><button data-i="${i}" title="Удалить">×</button></li>
+  ).join("") || "<li style='color:#777'>Пока нет своих доменов</li>";
+  ul.querySelectorAll("button").forEach(b => b.addEventListener("click", async () => {
+    workDomains.splice(Number(b.dataset.i), 1);
+    await chrome.storage.local.set({ workDomains });
+    renderDomains();
+  }));
+}
+
+async function addDomain() {
+  const input = document.getElementById("domainInput");
+  const err = document.getElementById("domainError");
+  const d = normalizeDomain(input.value);
+  err.textContent = "";
+  if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d)) {
+    err.textContent = "Введите домен, например company.ru";
+    return;
+  }
+  if (workDomains.includes(d)) {
+    err.textContent = "Этот домен уже добавлен";
+    return;
+  }
+  workDomains.push(d);
+  await chrome.storage.local.set({ workDomains });
+  input.value = "";
+  renderDomains();
+}
+
+async function initDomains() {
+  const data = await chrome.storage.local.get({ workDomains: [] });
+  workDomains = data.workDomains || [];
+  renderDomains();
+  document.getElementById("btnAddDomain").addEventListener("click", addDomain);
+  document.getElementById("domainInput").addEventListener("keydown", e => {
+    if (e.key === "Enter") addDomain();
+  });
+}
+
 async function initPopup() {
   try {
     const data = await chrome.storage.local.get({ mails: [] });
@@ -65,6 +117,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (btn) btn.addEventListener("click", () => show(filter));
   }
   initPopup();
+  initDomains();
 });
 
 function safeUrl(url) {
