@@ -1,7 +1,7 @@
 const SENDER_SELECTOR = '[aria-label*="@"]';
 
 const WORK_DOMAINS = ['company.ru', 'gosuslugi.ru'];
-let customDomains = []; s
+let customDomains = [];
 
 const NEWS_ADDRESS = /(noreply|no-reply|newsletter|news@|info@|mailer|digest|promo|marketing)/i;
 const NEWS_SUBJECT = /(скидк|акци|распродаж|промокод|подборк|новинк|выгодн|дайджест)/i;
