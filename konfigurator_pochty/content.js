@@ -1,5 +1,6 @@
 const SENDER_SELECTOR = '[aria-label*="@"]';
-const WORK_DOMAINS = ['company.ru', 'gosuslugi.ru'];
+const DEFAULT_DOMAINS = ['company.ru', 'gosuslugi.ru'];
+let WORK_DOMAINS = DEFAULT_DOMAINS.slice();
 const NEWS_ADDRESS = /(noreply|no-reply|newsletter|news@|info@|mailer|digest|promo|marketing)/i;
 const NEWS_SUBJECT = /(скидк|акци|распродаж|промокод|подборк|новинк|выгодн|дайджест)/i;
 const URGENT = /(срочно|ваш аккаунт.*(заблокирован|взломан)|подтвердите|уточните|немедленно|последнее предупреждение|доступ ограничен|выигрыш|блокировка|заблокирован|истекает срок|истечение срока|задолженност|досудебн|взыскани|подозрительн.{0,10}транзакц)/i;
@@ -54,7 +55,6 @@ function classify(name, email, subject) {
   return 'personal';
 }
 
-// Текст строки без наших меток — чтобы тема не менялась после вставки метки
 function cleanText(el) {
   const clone = el.cloneNode(true);
   clone.querySelectorAll('.ms-badge').forEach(b => b.remove());
@@ -74,12 +74,17 @@ function getRow(el, email) {
   return row;
 }
 
-// Метку ставим один раз, но данные возвращаем ВСЕГДА
 function labelMail(senderEl, row, name, email, subject) {
   const type = classify(name, email, subject);
   const [text, cls] = LABELS[type];
 
-  if (!row.querySelector('.ms-badge') && senderEl.parentElement) {
+  const existing = row.querySelector('.ms-badge');
+  if (existing) {
+    if (existing.textContent !== text) {
+      existing.className = 'ms-badge ' + cls;
+      existing.textContent = text;
+    }
+  } else if (senderEl.parentElement) {
     const badge = document.createElement('span');
     badge.className = 'ms-badge ' + cls;
     badge.textContent = text;
@@ -115,18 +120,20 @@ function processGmailRow(row) {
 async function saveMails(newMails) {
   if (!newMails.length || !alive()) return;
   const { mails = [] } = await chrome.storage.local.get({ mails: [] });
-  const keys = new Set(mails.map(m => `${m.account}|${m.from}|${m.subject}`));
+  const byKey = new Map(mails.map(m => [`${m.account}|${m.from}|${m.subject}`, m]));
   const fresh = [];
+  let changed = false;
   for (const item of newMails) {
     const key = `${item.account}|${item.from}|${item.subject}`;
-    if (!keys.has(key)) { keys.add(key); fresh.push(item); }
+    const old = byKey.get(key);
+    if (!old) { byKey.set(key, item); fresh.push(item); }
+    else if (old.label !== item.label) { old.label = item.label; changed = true; }
   }
-  if (fresh.length) {
+  if (fresh.length || changed) {
     await chrome.storage.local.set({ mails: [...fresh, ...mails].slice(0, MAX_MAILS) });
   }
 }
 
-// Записи идут строго по очереди — без гонок get/set
 function queueSave(newMails) {
   saveChain = saveChain
     .then(() => saveMails(newMails))
@@ -134,34 +141,50 @@ function queueSave(newMails) {
 }
 
 function run() {
-  if (!alive()) {            // расширение обновили/перезагрузили — тихо выходим
+  if (!alive()) {
     if (observer) observer.disconnect();
     return;
   }
   const found = [];
-  try {
-    if (IS_GMAIL) {
-      document.querySelectorAll('tr.zA, tr[role="row"]').forEach(row => {
-        const d = processGmailRow(row);
-        if (d) found.push(d);
-      });
-    } else {
-      document.querySelectorAll(SENDER_SELECTOR).forEach(el => {
-        const d = processSender(el);
-        if (d) found.push(d);
-      });
+  const items = IS_GMAIL
+    ? document.querySelectorAll('tr.zA, tr[role="row"]')
+    : document.querySelectorAll(SENDER_SELECTOR);
+  items.forEach(el => {
+    try {
+      const d = IS_GMAIL ? processGmailRow(el) : processSender(el);
+      if (d) found.push(d);
+    } catch (e) {
+      console.warn('Конфигуратор почты: ошибка в строке', e);
     }
-  } catch (e) {
-    console.warn('Конфигуратор почты: ошибка обработки', e);
-  }
+  });
   queueSave(found);
 }
 
 function schedule() {
-  clearTimeout(timer);
-  timer = setTimeout(run, 500);
+  if (timer) return;
+  timer = setTimeout(() => { timer = null; run(); }, 500);
 }
+
+function normDomain(d) {
+  return String(d || '').toLowerCase().trim()
+    .replace(/^https?:\/\//, '').replace(/^@/, '').replace(/^www\./, '').split('/')[0];
+}
+
+async function loadDomains() {
+  try {
+    const { workDomains } = await chrome.storage.local.get({ workDomains: DEFAULT_DOMAINS });
+    WORK_DOMAINS = (workDomains || []).map(normDomain).filter(Boolean);
+  } catch (e) { }
+}
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && changes.workDomains) {
+    WORK_DOMAINS = (changes.workDomains.newValue || []).map(normDomain).filter(Boolean);
+    run();
+  }
+});
 
 observer = new MutationObserver(schedule);
 observer.observe(document.body, { childList: true, subtree: true });
-run();
+setInterval(run, 2000);
+loadDomains().then(run);

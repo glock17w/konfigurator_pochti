@@ -19,3 +19,13 @@ h2 { margin: 0 0 10px; font-size: 16px; }
 .empty { font-size: 12px; color: #777; }
 .clear { margin-top: 10px; padding: 4px 10px; border: 1px solid #ccc; border-radius: 6px;
   background: #fff; cursor: pointer; font-size: 12px; color: #b91c1c; }
+
+.settings { margin-top: 10px; font-size: 12px; }
+.settings summary { cursor: pointer; font-weight: 600; }
+.add { display: flex; gap: 6px; margin: 8px 0; }
+.add input { flex: 1; padding: 4px 6px; border: 1px solid #ccc; border-radius: 6px; }
+.add button { padding: 4px 10px; border: 1px solid #2563eb; background: #2563eb;
+  color: #fff; border-radius: 6px; cursor: pointer; }
+.dom { display: flex; justify-content: space-between; align-items: center;
+  padding: 3px 0; border-bottom: 1px solid #eee; }
+.dom button { border: none; background: none; color: #b91c1c; cursor: pointer; font-size: 14px; }
